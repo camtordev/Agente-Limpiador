@@ -2,22 +2,12 @@ import random
 from collections import deque
 
 
-class TipoSuciedad:
-    """Definición de niveles de suciedad con puntaje"""
-    NIVEL1 = {"nombre": "baja", "valor": 1, "simbolo": "🟡"}
-    NIVEL2 = {"nombre": "media", "valor": 2, "simbolo": "🟠"}
-    NIVEL3 = {"nombre": "alta", "valor": 3, "simbolo": "🔴"}
-    TODOS = (NIVEL1, NIVEL2, NIVEL3)
-
-
 class AgenteLimpiador:
 
     def __init__(self, x, y):
         self.x = x
         self.y = y
         self.suciedad_limpiada = 0
-        self.valor_total_limpiado = 0
-        self.suciedades_limpiadas = []
         self.lugares_visitados = set()
         self.lugares_visitados.add((x, y))
         self.movimientos = 0
@@ -45,21 +35,6 @@ class AgenteLimpiador:
 
     def decidir_movimiento(self, entorno):
         celdas_adyacentes = self.obtener_celdas_adyacentes(entorno)
-
-        celdas_sucias_adyacentes = []
-        for nombre, x, y in celdas_adyacentes:
-            if entorno.hay_suciedad(x, y):
-                tipo = entorno.obtener_tipo_suciedad(x, y)
-                celdas_sucias_adyacentes.append((nombre, x, y, tipo["valor"]))
-
-        if celdas_sucias_adyacentes:
-            # Buscar el máximo valor
-            max_valor = max(c[3] for c in celdas_sucias_adyacentes)
-            # Quedarse con todas las celdas que tengan ese valor máximo
-            mejores = [c for c in celdas_sucias_adyacentes if c[3] == max_valor]
-            # Elegir una al azar entre las mejores (por si hay varias)
-            nombre, _, _, _ = random.choice(mejores)
-            return nombre
 
         # Filtrar celdas no visitadas
         celdas_no_visitadas = [
@@ -101,11 +76,11 @@ class AgenteLimpiador:
 
         return {
             'suciedad_limpiada': self.suciedad_limpiada,
-            'valor_total_limpiado': self.valor_total_limpiado,
             'movimientos': self.movimientos,
             'celdas_exploradas': celdas_exploradas,
             'total_celdas': total_celdas,
-            'porcentaje_exploracion': porcentaje_exploracion
+            'porcentaje_exploracion': porcentaje_exploracion,
+            'eficiencia': self.suciedad_limpiada / self.movimientos if self.movimientos > 0 else 0
         }
 
 
@@ -115,35 +90,25 @@ class EntornoGrid:
     def __init__(self, ancho, alto, num_suciedad):
         self.ancho = ancho
         self.alto = alto
-        self.suciedad = {}
-        self._generar_suciedad(num_suciedad)
-        self.suciedad_inicial = len(self.suciedad)
-        self.valor_total_inicial = sum(t["valor"]
-                                       for t in self.suciedad.values())
+        self.suciedad = set()
+        self.suciedad_inicial = num_suciedad
 
-    def _generar_suciedad(self, num_suciedad):
+        # Generar suciedad aleatoria
         while len(self.suciedad) < num_suciedad:
-            x = random.randint(0, self.ancho - 1)
-            y = random.randint(0, self.alto - 1)
-            if (x, y) not in self.suciedad:
-                tipo = random.choice(TipoSuciedad.TODOS)
-                self.suciedad[(x, y)] = tipo
+            x = random.randint(0, ancho - 1)
+            y = random.randint(0, alto - 1)
+            self.suciedad.add((x, y))
 
     # Verifica si hay suciedad en la posición
     def hay_suciedad(self, x, y):
         return (x, y) in self.suciedad
 
-    # Devuelve el tipo de suciedad en una posición
-    def obtener_tipo_suciedad(self, x, y):
-        return self.suciedad.get((x, y))
-
-    # Limpia la suciedad en la posición y devuelve el tipo
+    # Limpia la suciedad en la posición
     def limpiar(self, x, y):
         if (x, y) in self.suciedad:
-            tipo = self.suciedad[(x, y)]
-            del self.suciedad[(x, y)]
-            return tipo
-        return None
+            self.suciedad.remove((x, y))
+            return True
+        return False
 
     # Mueve el agente en la dirección especificada
     def mover_agente(self, agente, direccion):
@@ -173,8 +138,7 @@ class EntornoGrid:
                 if x == agente.x and y == agente.y:
                     print("🤖", end=" ")
                 elif (x, y) in self.suciedad:
-                    tipo = self.suciedad[(x, y)]
-                    print(tipo["simbolo"], end=" ")
+                    print("💩", end=" ")
                 elif (x, y) in agente.lugares_visitados:
                     print("✓ ", end=" ")
                 else:
@@ -183,7 +147,7 @@ class EntornoGrid:
         print()
 
 
-def simular_limpieza_con_memoria(ancho=5, alto=5, num_suciedad=12, pasos=50):
+def simular_limpieza_con_memoria(ancho=8, alto=8, num_suciedad=12, pasos=100):
 
     entorno = EntornoGrid(ancho, alto, num_suciedad)
     agente = AgenteLimpiador(ancho // 2, alto // 2)
@@ -195,10 +159,6 @@ def simular_limpieza_con_memoria(ancho=5, alto=5, num_suciedad=12, pasos=50):
     print(f"  - Tamaño del grid: {ancho}x{alto} ({ancho*alto} celdas)")
     print(f"  - Suciedad inicial: {num_suciedad}")
     print(f"  - Pasos máximos: {pasos}")
-    print("\nNiveles de suciedad:")
-    print("  🟡 Baja  (valor 1)")
-    print("  🟠 Media (valor 2)")
-    print("  🔴 Alta  (valor 3)")
 
     print("\nEstado inicial:")
     entorno.mostrar(agente)
@@ -208,18 +168,14 @@ def simular_limpieza_con_memoria(ancho=5, alto=5, num_suciedad=12, pasos=50):
         accion = agente.decidir_y_actuar(percepcion, entorno)
 
         if accion == "limpiar":
-            tipo = entorno.limpiar(agente.x, agente.y)
-            if tipo is not None:
+            if entorno.limpiar(agente.x, agente.y):
                 agente.suciedad_limpiada += 1
-                agente.valor_total_limpiado += tipo["valor"]
-                agente.suciedades_limpiadas.append(tipo["nombre"])
                 print(
-                    f"Paso {paso + 1}: 🧹 Limpiando suciedad {tipo['nombre']} "
-                    f"{tipo['simbolo']} en ({agente.x}, {agente.y}) "
-                    f"[+{tipo['valor']} pts]"
-                )
+                    f"Paso {paso + 1}: 🧹 Limpiando en ({agente.x}, {agente.y})")
         elif accion:
             entorno.mover_agente(agente, accion)
+            es_nueva = (agente.x, agente.y) not in agente.lugares_visitados
+
             print(
                 f"Paso {paso + 1} Moviéndose {accion} a ({agente.x}, {agente.y})")
 
@@ -229,8 +185,7 @@ def simular_limpieza_con_memoria(ancho=5, alto=5, num_suciedad=12, pasos=50):
             entorno.mostrar(agente)
             stats = agente.obtener_estadisticas(entorno)
             print(f"Exploración: {stats['porcentaje_exploracion']:.1f}% | "
-                  f"Limpieza: {stats['suciedad_limpiada']}/{entorno.suciedad_inicial} | "
-                  f"Valor: {stats['valor_total_limpiado']}/{entorno.valor_total_inicial}")
+                  f"Limpieza: {stats['suciedad_limpiada']}/{num_suciedad}")
 
         # Condición de terminación
         if len(entorno.suciedad) == 0:
@@ -247,8 +202,6 @@ def simular_limpieza_con_memoria(ancho=5, alto=5, num_suciedad=12, pasos=50):
     print(f"\nRendimiento:")
     print(
         f"  ✓ Suciedad limpiada: {stats['suciedad_limpiada']}/{entorno.suciedad_inicial}")
-    print(
-        f"  ✓ Valor total limpiado: {stats['valor_total_limpiado']}/{entorno.valor_total_inicial} puntos")
     print(f"  ✓ Movimientos totales: {stats['movimientos']}")
 
     print(f"Exploración:")
@@ -262,7 +215,7 @@ def simular_limpieza_con_memoria(ancho=5, alto=5, num_suciedad=12, pasos=50):
 
     if len(entorno.suciedad) > 0:
         print(f"⚠️  Suciedad restante: {len(entorno.suciedad)} ubicaciones")
-        print(f"   Posiciones sin limpiar: {list(entorno.suciedad.keys())}")
+        print(f"   Posiciones sin limpiar: {entorno.suciedad}")
 
 
 # Ejecutar simulación
